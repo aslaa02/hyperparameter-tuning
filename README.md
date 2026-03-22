@@ -8,4 +8,4 @@ Goal: Predict credit default risk using multiple ML models intelligently combine
 - Soft computing: Neural-Fuzzy system (ANFIS) that takes the raw features as input and provide an interpretable risk score("medium-high risk") alongside the ML prediction.
 - Mathematical Optimization: Quadratic Programming to solve for the optimal ensemble weights(benchmark against ACO's solution).
 
-How it integrates: Three ML models make prediction -> ACO finds the best combinaion weights -> ANFIS provides interpretable output -> QP validates optimal weights.
+How it integrates: Three ML models make prediction -> ACO finds the best combinaion weights -> ANFIS provides interpretable output -> QP provides the optimal benchmark; ACO is evaluated against it
