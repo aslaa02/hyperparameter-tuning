@@ -1,0 +1,125 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+*.ipynb
+!*.ipynb  # but we keep notebooks? Actually we want to track notebooks, so comment out or remove
+# Usually you commit notebooks, but if you don't want to, uncomment:
+# *.ipynb
+
+# Model artifacts
+*.pkl
+*.joblib
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.onnx
+*.model
+
+# MLflow
+mlruns/
+mlflow.db
+
+# Gradio
+gradio_cached_examples/
+gradio/
+
+# Data files (if any)
+*.csv
+*.xlsx
+*.xls
+*.parquet
+data/
+dataset/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Outputs
+outputs/
+results/
+reports/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyTorch / deep learning
+*.pth
+*.pt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# FastAPI / Uvicorn
+uvicorn.pid
+
+# Temporary files
+tmp/
+temp/
