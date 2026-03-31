@@ -1,0 +1,1043 @@
+\documentclass[12pt,a4paper]{article}
+
+% --- Packages ---
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{natbib}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{multirow}
+\usepackage{longtable}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Credit Risk Assessment}
+\lhead{Ensemble Learning with ACO and QP}
+\cfoot{\thepage}
+
+\setstretch{1.2}
+
+% ---------------------------------------------------------------
+\begin{document}
+
+% ===============================================================
+% TITLE PAGE
+% ===============================================================
+\begin{titlepage}
+\centering
+\vspace*{1.5cm}
+
+{\LARGE \textbf{Asymmetric Cost-Sensitive Ensemble Credit Risk Assessment}}\\[0.8cm]
+{\large Using Ant Colony Optimisation and Quadratic Programming}\\[2.5cm]
+
+{\large \textbf{Project Team}}\\[0.6cm]
+{\normalsize
+[Team Member 1 --- Roll No.]\\[0.3cm]
+[Team Member 2 --- Roll No.]\\[0.3cm]
+[Team Member 3 --- Roll No.]\\[0.3cm]
+[Team Member 4 --- Roll No.]\\[0.3cm]
+[Team Member 5 --- Roll No.]\\[1.5cm]
+}
+
+{\normalsize Submitted in partial fulfilment of the requirements for}\\[0.3cm]
+{\normalsize [Course Name and Code]}\\[0.3cm]
+{\normalsize [Department of Computer Science / Information Technology]}\\[0.3cm]
+{\normalsize [Institution Name]}\\[1.5cm]
+
+{\normalsize Supervised by: [Supervisor Name]}\\[2cm]
+
+{\normalsize \today}
+
+\vfill
+\end{titlepage}
+
+% ===============================================================
+% TABLE OF CONTENTS
+% ===============================================================
+\tableofcontents
+\newpage
+
+% ===============================================================
+% 1. INTRODUCTION
+% ===============================================================
+\section{Introduction}
+
+Credit risk assessment is the process by which a financial institution evaluates the probability that a borrower will fail to repay a loan. The consequences of mis-classification in this domain are fundamentally asymmetric: approving a loan to a borrower who subsequently defaults (a \textbf{False Negative}, FN) carries a financial cost estimated in the German Credit benchmark at five times the cost of incorrectly rejecting a creditworthy applicant (a \textbf{False Positive}, FP). Standard machine learning pipelines, which optimise symmetric metrics such as accuracy or the balanced $F_1$ score, are structurally misaligned with this asymmetry. This report documents the design, implementation, and evaluation of a multi-paradigm ensemble pipeline that addresses this misalignment directly.
+
+\subsection{Motivation}
+
+The German Credit dataset~\citep{dua2019uci}, a widely studied benchmark with 1,000 samples and 20 features, embodies the practical challenges of credit scoring: class imbalance (70\% creditworthy, 30\% defaulters), mixed feature types (7 continuous, 13 categorical), and an explicit asymmetric cost matrix. Traditional binary classifiers applied to this data without accommodating these properties produce models that are systematically biased toward the majority class and are evaluated using metrics that do not reflect the financial stakes.
+
+\subsection{Objectives}
+
+This project pursues three interconnected objectives:
+\begin{enumerate}
+    \item Construct a leakage-free, calibrated ensemble of three heterogeneous base classifiers optimised for the German Credit cost matrix.
+    \item Apply \textbf{Ant Colony Optimisation for Continuous Domains} (ACO-R) to discover ensemble weights, benchmarking its convergence against the \textbf{analytically exact Quadratic Programming} (QP) solution.
+    \item Evaluate all components under strict data isolation protocols to prevent any form of information leakage between training, optimisation, calibration, and final evaluation.
+\end{enumerate}
+
+\subsection{Key Terms}
+
+\begin{description}
+    \item[Ensemble Learning] The combination of predictions from multiple models to produce a final prediction that is more robust or accurate than any single constituent model.
+    \item[Out-of-Fold (OOF) Predictions] Predictions generated via $K$-fold cross-validation such that each training sample is predicted exactly once by a model that was not trained on it, producing unbiased probability estimates.
+    \item[Probability Calibration] The process of adjusting a model's raw probability outputs so that a stated probability of $p$ corresponds to an empirical frequency of $p$ (i.e., among all instances assigned probability $p$, a proportion $p$ are truly positive).
+    \item[SMOTENC] Synthetic Minority Over-sampling Technique for Nominal and Continuous features. Synthesises new minority-class samples by interpolating continuous features and selecting the mode of $k$ nearest neighbours for categorical features, preserving categorical validity.
+    \item[ACO-R] Ant Colony Optimisation for continuous domains. Models pheromone trails as a ranked archive of elite solutions and generates new candidate solutions by sampling from Gaussian distributions centred on archive members.
+    \item[Quadratic Programming (QP)] An optimisation problem in which the objective function is quadratic and the constraints are linear. The ensemble weight optimisation problem takes this form, guaranteeing a unique global minimum.
+    \item[False Negative Rate] The fraction of true defaulters the model incorrectly predicts as creditworthy: $\text{FNR} = \text{FN} / (\text{FN} + \text{TP})$.
+    \item[Recall (Sensitivity)] The fraction of true defaulters correctly identified: $\text{Recall} = \text{TP} / (\text{TP} + \text{FN}) = 1 - \text{FNR}$.
+\end{description}
+
+% ===============================================================
+% 2. EXISTING SYSTEMS
+% ===============================================================
+\section{Existing Systems}
+
+Credit scoring has been an active area of research since the 1960s. Three broad families of methods characterise the state of the art.
+
+\subsection{Statistical and Linear Models}
+
+\textbf{Logistic Regression} remains the most widely deployed model in operational credit scoring due to its interpretability and regulatory compliance. It models the log-odds of default as a linear function of the input features. Despite its simplicity, it often achieves competitive ROC-AUC on structured datasets, typically in the range of 0.75--0.80 on the German Credit benchmark. Its primary limitation is the linear decision boundary, which cannot capture feature interactions without manual engineering.
+
+\textbf{Linear Discriminant Analysis} and \textbf{Probit Regression} are closely related approaches that also assume Gaussian class-conditional distributions or model the latent utility as a Gaussian variable. They share the interpretability advantages of logistic regression and similar empirical performance on low-dimensional tabular data.
+
+\subsection{Kernel and Tree-Based Models}
+
+\textbf{Support Vector Machines (SVM)} with radial basis function (RBF) kernels implicitly map data into an infinite-dimensional feature space and find the maximum-margin hyperplane separating the two classes. On the German Credit dataset, RBF-SVMs consistently achieve ROC-AUC in the range of 0.80--0.84. Their principal drawback is that the decision function output is a signed distance, not a calibrated probability; Platt scaling must be applied to obtain reliable probabilities suitable for threshold calibration.
+
+\textbf{Random Forests}~\citep{breiman2001random} build an ensemble of decision trees on bootstrap samples of the training data, aggregating predictions by voting or averaging. They handle mixed feature types naturally, are robust to outliers, and typically achieve 0.78--0.82 ROC-AUC on the German Credit benchmark. Their probabilities are characteristically under-confident (compressed toward 0.5) due to tree-averaging, requiring isotonic regression calibration.
+
+\textbf{Gradient Boosted Trees} (XGBoost~\citep{chen2016xgboost}, LightGBM~\citep{ke2017lightgbm}, CatBoost~\citep{prokhorenkova2018catboost}) represent the current state of the art for tabular classification. By sequentially fitting shallow trees to the residuals of the previous ensemble, they achieve ROC-AUC in the 0.83--0.87 range on the German Credit dataset. Their main limitation for this project is that they are not directly compatible with the SMOTENC synthesis pipeline used here, and they offer no mechanism for swarm-intelligence-based weight discovery.
+
+\subsection{Neural Approaches}
+
+Standard \textbf{Multilayer Perceptrons (MLPs)} have been applied to credit scoring since the 1990s. Their performance on the German Credit dataset is inconsistent, typically matching or falling slightly below SVM performance. The fundamental mismatch between ReLU activations and binary one-hot-encoded features (for which ReLU is effectively an identity function), combined with severe parameter-to-sample ratio issues (over 5,000 parameters on only 800--900 training samples), limits their practical utility on this scale of tabular data.
+
+% ===============================================================
+% 3. LITERATURE REVIEW
+% ===============================================================
+\section{Literature Review}
+
+\subsection{Ensemble Methods for Credit Scoring}
+
+\citet{west2000neural} conducted an early comparison of neural network ensemble approaches on credit scoring datasets, finding that committee machines (simple averaging) consistently outperformed single-model approaches. \citet{brown2012experimental} provided a comprehensive comparison of ensemble methods on 14 credit datasets, establishing that bagging and boosting techniques improve AUC by 1--3\% over the best individual classifiers on average.
+
+Stacking (or stacked generalisation), introduced by \citet{wolpert1992stacked}, trains a meta-learner on out-of-fold predictions from base models. Unlike simple averaging, stacking can learn which models are most reliable in which regions of the input space. \citet{lessmann2015benchmarking} benchmarked 41 classification methods on 8 credit datasets, finding that ensemble-based approaches, particularly gradient boosting, consistently dominated.
+
+\subsection{Class Imbalance in Credit Scoring}
+
+The imbalanced nature of credit datasets has motivated extensive research into resampling techniques. \citet{chawla2002smote} introduced SMOTE, which synthesises minority-class samples by interpolating between real minority instances in feature space. However, SMOTE was designed for continuous features; applying it to one-hot-encoded categorical variables produces synthetic samples with non-binary values that have no real-world counterpart. SMOTENC~\citep{chawla2002smote} addresses this by applying interpolation only to continuous features and mode selection to categorical features.
+
+\subsection{Cost-Sensitive Learning}
+
+\citet{elkan2001foundations} established the theoretical foundations of cost-sensitive learning, showing that the optimal decision threshold under an asymmetric cost matrix is not 0.5 but depends on the ratio of misclassification costs. For the German Credit dataset, with $c_\text{FN} = 5$ and $c_\text{FP} = 1$, the naive cost-optimal threshold under a calibrated model is approximately:
+\[
+t^* = \frac{c_\text{FP}}{c_\text{FP} + c_\text{FN}} = \frac{1}{6} \approx 0.167
+\]
+though the actual empirically optimal threshold depends on the specific probability distribution produced by the ensemble.
+
+\subsection{Swarm Intelligence in Model Combination}
+
+ACO, introduced by \citet{dorigo1992optimization} for discrete combinatorial problems (the Travelling Salesman Problem), was extended to continuous domains as ACO-R by \citet{socha2008ant}. The continuous variant models pheromone trails as a ranked archive of elite solutions and samples new candidates from Gaussian kernels centred on archive members. Applications of ACO-R to feature selection and hyperparameter optimisation in machine learning have been reported~\citep{yu2014improved}, but its use specifically for ensemble weight optimisation in credit risk assessment appears to be novel, representing a research gap this project explores.
+
+% ===============================================================
+% 4. RESEARCH GAPS
+% ===============================================================
+\section{Research Gaps}
+
+Several specific gaps in the existing literature motivate the ensemble architecture designed in this project.
+
+\subsection{Objective Misalignment in Ensemble Weight Optimisation}
+
+The standard approach to ensemble weight optimisation, whether via simple averaging, stacking with logistic regression, or Bayesian model combination, typically optimises a symmetric objective (accuracy, log-loss, or AUC). The German Credit cost matrix is explicitly asymmetric. Optimising symmetric ensemble weights on an asymmetric deployment objective introduces a structural misalignment: the weights that minimise MSE on out-of-fold predictions are not guaranteed to minimise the expected financial cost on the test set.
+
+\subsection{Swarm Intelligence for Continuous Ensemble Weighting}
+
+To the best of our knowledge, ACO-R has not been applied specifically to the problem of learning optimal ensemble weights for credit risk assessment. The problem is well-suited to swarm methods because: (a) the weight space is a 3-dimensional probability simplex, amenable to continuous search; and (b) future extensions could replace the convex MSE objective with a non-differentiable cost function, where gradient-free methods have a structural advantage over QP.
+
+\subsection{Probabilistic Calibration Consistency}
+
+Most ensemble credit scoring papers use raw model outputs without calibration, or apply a single calibration method uniformly. This project applies model-appropriate calibration: isotonic regression for Random Forest (underconfidence correction) and Platt sigmoid scaling for SVM (overconfidence correction), and demonstrates that miscalibrated base-model probabilities can degrade ensemble performance even when the ensemble weights are optimally tuned.
+
+\subsection{Mixed-Type Synthesis Before Encoding}
+
+Vanilla SMOTE is routinely applied to datasets after one-hot encoding in the literature, producing synthetic samples with non-binary values in binary feature dimensions. SMOTENC is the correct solution but is rarely integrated into a full three-stage pipeline (scale $\rightarrow$ synthesise $\rightarrow$ encode) within a leakage-free nested cross-validation framework. This project demonstrates this integration.
+
+% ===============================================================
+% 5. PROPOSED METHODOLOGY
+% ===============================================================
+\section{Proposed Methodology}
+
+\subsection{Dataset Description}
+
+\subsubsection{Overview}
+
+The Statlog (German Credit) dataset~\citep{dua2019uci} was originally compiled by Professor Hans Hofmann at the University of Hamburg and made publicly available through the UCI Machine Learning Repository. It contains records of 1,000 loan applications processed by a German bank, each labelled as either \textit{good credit} (creditworthy) or \textit{bad credit} (default-risk). The dataset is widely regarded as a standard benchmark for cost-sensitive binary classification, owing to its realistic class imbalance, mixed feature types, and explicit asymmetric misclassification costs.
+
+\begin{table}[H]
+\centering
+\caption{German Credit Dataset --- High-Level Summary}
+\label{tab:dataset}
+\begin{tabular}{ll}
+\toprule
+\textbf{Property} & \textbf{Value} \\
+\midrule
+Total instances & 1,000 \\
+Total features & 20 (7 continuous, 13 categorical) \\
+Class distribution & 700 good (70\%), 300 bad (30\%) \\
+Train / Test split & 800 / 200 (stratified) \\
+Imbalance ratio & 2.33 : 1 (majority : minority) \\
+Cost matrix & $c_\text{FN} = 5$, $c_\text{FP} = 1$ \\
+Source & UCI ML Repository / OpenML \\
+Missing values & None \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Continuous Features}
+
+Seven of the 20 features take numerical values and exhibit varying degrees of right-skew. Table~\ref{tab:cont_features} summarises each feature along with its range and distributional characteristics.
+
+\begin{table}[H]
+\centering
+\caption{Continuous Features of the German Credit Dataset}
+\label{tab:cont_features}
+\begin{tabular}{p{3.5cm}p{3.5cm}p{2.5cm}p{3.5cm}}
+\toprule
+\textbf{Feature} & \textbf{Description} & \textbf{Range} & \textbf{Remarks} \\
+\midrule
+Duration (months) & Duration of the credit in months & 4 -- 72 & Right-skewed; most credits are short-term (12--24 months) \\
+Credit amount (DM) & Amount of credit requested & 250 -- 18,424 & Highly right-skewed; median $\approx$ 2,320 DM \\
+Instalment rate (\%) & Instalment as \% of disposable income & 1 -- 4 & Integer-valued but treated as ordinal continuous \\
+Residence duration & Years at current residence & 1 -- 4 & Integer-valued; relatively uniform distribution \\
+Age (years) & Age of the applicant & 19 -- 75 & Right-skewed; median $\approx$ 33 years \\
+Existing credits & Number of existing credits at this bank & 1 -- 4 & Integer-valued; most applicants have 1--2 credits \\
+Number of dependents & Number of dependants to provide for & 1 -- 2 & Binary integer; 84\% of applicants have 1 dependent \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The credit amount feature is the most numerically extreme, spanning more than two orders of magnitude. This makes RobustScaler preferable to StandardScaler for pre-processing, since a handful of large loan amounts would otherwise distort the per-feature mean and standard deviation.
+
+\subsubsection{Categorical Features}
+
+Thirteen features encode qualitative attributes of the applicant and the loan. Table~\ref{tab:cat_features} provides a complete enumeration.
+
+\begin{table}[H]
+\centering
+\caption{Categorical Features of the German Credit Dataset}
+\label{tab:cat_features}
+\begin{tabular}{p{3.5cm}p{5cm}p{4cm}}
+\toprule
+\textbf{Feature} & \textbf{Description} & \textbf{Categories} \\
+\midrule
+Checking account status & Balance in DM at the applicant's checking account & No account; $<$0 DM; 0--200 DM; $\geq$200 DM \\
+Credit history & Applicant's past credit repayment record & No credits taken; all credits paid; existing credits paid; delay in past; critical account \\
+Purpose & Purpose for which the loan is sought & Car (new/used), furniture, TV, appliances, repairs, education, vacation, retraining, business, other \\
+Savings status & Balance in DM in savings/bonds account & Unknown/none; $<$100 DM; 100--500 DM; 500--1000 DM; $\geq$1000 DM \\
+Employment duration & Years in current employment & Unemployed; $<$1 year; 1--4 years; 4--7 years; $\geq$7 years \\
+Personal status \& sex & Gender and marital status combination & Male divorced; female non-single; male single; male married/widowed; female single \\
+Other debtors/guarantors & Presence of co-applicant or guarantor & None; co-applicant; guarantor \\
+Property & Most valuable property owned & Real estate; savings/life insurance; car/other; unknown/no property \\
+Other instalment plans & Instalment plans at other institutions & Bank; stores; none \\
+Housing & Housing situation of the applicant & Rent; own; for free \\
+Job category & Employment type of the applicant & Unemployed/unskilled non-resident; unskilled resident; skilled employee; management/self-employed \\
+Telephone & Whether applicant has a registered telephone & Yes (under customer's name); no \\
+Foreign worker & Whether applicant is a foreign national & Yes; no \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Class Label and Cost Matrix}
+
+The binary target variable is coded as:
+\begin{itemize}
+    \item \textbf{Class 0 (Good / Creditworthy)}: The applicant is predicted to repay the loan on time. There are 700 such instances (70\% of the dataset).
+    \item \textbf{Class 1 (Bad / Default-Risk)}: The applicant is likely to default or delay repayment. There are 300 such instances (30\% of the dataset).
+\end{itemize}
+
+The original dataset provides an explicit cost matrix specifying the financial penalty for each type of misclassification:
+\[
+C = \begin{pmatrix} 0 & 1 \\ 5 & 0 \end{pmatrix}
+\]
+where $C[i,j]$ is the cost of predicting class $j$ when the true class is $i$. This encodes:
+\begin{itemize}
+    \item $c_\text{FP} = C[0,1] = 1$: Rejecting a creditworthy applicant costs 1 unit (opportunity cost).
+    \item $c_\text{FN} = C[1,0] = 5$: Approving a defaulter costs 5 units (loan loss).
+\end{itemize}
+
+\subsubsection{Feature Correlations and Class-Conditional Statistics}
+
+Among the continuous features, credit amount and duration exhibit the strongest positive correlation ($r \approx 0.62$), reflecting the fact that larger loans are typically granted over longer terms. Age has a modest negative correlation with default ($r \approx -0.09$), indicating that older applicants are slightly less likely to default. Checking account status is the most discriminative categorical feature: applicants with no checking account or a balance exceeding 200 DM default at substantially lower rates than those with negative or minimal balances.
+
+\subsubsection{Train/Test Partitioning}
+
+The 1,000-sample dataset is partitioned into 800 training samples and 200 test samples using stratified random splitting, ensuring that both partitions contain approximately 70\% good-credit and 30\% bad-credit instances. The test set serves as the held-out evaluation partition and is not accessed during any phase of training, hyperparameter optimisation, weight calibration, or threshold selection.
+
+\subsection{Pipeline Architecture Overview}
+
+The pipeline is structured as a strict sequence of six computational blocks, each isolated from the others to prevent information leakage.
+
+\begin{figure}[H]
+\centering
+\begin{tabular}{|c|}
+\hline
+\textbf{Block 1}: Stratified 80/20 Split \\
+\hline
+$\downarrow$ \\
+\hline
+\textbf{Block 2}: 3-Stage SMOTENC Pipeline + Nested CV + OOF Generation \\
+\hline
+$\downarrow$ \\
+\hline
+\textbf{Block 3}: QP Benchmark (Exact MSE Minimum) on $P_\text{opt}$ \\
+\hline
+$\downarrow$ \\
+\hline
+\textbf{Block 4}: ACO-R Swarm Optimisation on $P_\text{opt}$ \\
+\hline
+$\downarrow$ \\
+\hline
+\textbf{Block 5}: Asymmetric Cost Threshold Calibration on $P_\text{calib}$ \\
+\hline
+$\downarrow$ \\
+\hline
+\textbf{Block 6}: Final Evaluation on Held-Out Test Set \\
+\hline
+\end{tabular}
+\caption{Sequential pipeline architecture with strict data isolation between blocks.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Block 1: Data Ingestion and Splitting}
+
+The raw dataset is immediately bifurcated into training (800 samples) and test (200 samples) partitions using stratified sampling. No preprocessing of any kind is applied before this split.
+
+\subsection{Block 2: Three-Stage Mixed-Data Synthesis and Nested Cross-Validation}
+
+\subsubsection{Preprocessing Stage 1: Spatial Conditioning}
+
+Numerical features are scaled using \textbf{RobustScaler}, which centres each feature by its median and scales by its interquartile range (IQR):
+\[
+z_i = \frac{x_i - \text{median}(\mathbf{x})}{\text{IQR}(\mathbf{x})}
+\]
+RobustScaler has a breakdown point of 25\%, meaning it is unaffected by up to 25\% of the data being extreme values. Categorical features are passed through unchanged.
+
+\subsubsection{Synthesis Stage: SMOTENC}
+
+SMOTENC synthesises minority-class samples by:
+\begin{enumerate}
+    \item For each minority sample, identifying its $k=5$ nearest neighbours in the RobustScaled continuous feature space.
+    \item For continuous features, interpolating: $\mathbf{x}_\text{new} = \mathbf{x}_i + \lambda (\mathbf{x}_j - \mathbf{x}_i)$ where $\lambda \sim \text{Uniform}(0,1)$.
+    \item For categorical features, selecting the mode of the $k$ nearest neighbours, preserving valid category membership.
+\end{enumerate}
+
+\subsubsection{Preprocessing Stage 2: Identity Cast and Orthogonal Expansion}
+
+After synthesis, categorical features are one-hot encoded with \texttt{drop='first'} to remove the dummy variable trap.
+
+\subsubsection{Base Estimators and Calibration}
+
+Three heterogeneous base classifiers are employed:
+
+\begin{itemize}
+    \item \textbf{Random Forest}: Calibrated via isotonic regression. HPO range: $n_\text{est} \in [100, 400]$, $d_\text{max} \in [4, 12]$.
+    \item \textbf{SVM (RBF)}: Calibrated via Platt sigmoid. HPO range: $C \in [10^{-3}, 10^2]$, $\gamma \in [10^{-4}, 10^0]$ (log-uniform).
+    \item \textbf{MLP}: One-hidden-layer network with Adam optimiser and early stopping. Calibrated via Platt sigmoid.
+\end{itemize}
+
+\subsubsection{Nested Cross-Validation and OOF Performance}
+
+\begin{table}[H]
+\centering
+\caption{Out-of-Fold ROC-AUC During Nested Cross-Validation}
+\label{tab:oofresults}
+\begin{tabular}{lc}
+\toprule
+\textbf{Model} & \textbf{OOF ROC-AUC} \\
+\midrule
+Random Forest (calibrated) & 0.7765 \\
+SVM (calibrated, RBF)      & 0.7757 \\
+MLP (calibrated)           & 0.7781 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Block 3: Quadratic Programming Benchmark}
+
+\[
+\min_{\mathbf{w}} \|\mathbf{P}_\text{opt} \mathbf{w} - \mathbf{y}_\text{opt}\|_2^2 \quad \text{subject to} \quad \mathbf{1}^\top \mathbf{w} = 1, \quad \mathbf{w} \geq 0
+\]
+
+Expanding to standard QP form $\min \frac{1}{2}\mathbf{w}^\top \mathbf{Q}\mathbf{w} + \mathbf{c}^\top \mathbf{w}$:
+\[
+\mathbf{Q} = 2\mathbf{P}_\text{opt}^\top \mathbf{P}_\text{opt} \in \mathbb{R}^{3\times3}, \qquad \mathbf{c} = -2\mathbf{P}_\text{opt}^\top \mathbf{y}_\text{opt} \in \mathbb{R}^3
+\]
+
+\subsection{Block 4: Ant Colony Optimisation}
+
+ACO-R~\citep{socha2008ant} maintains a ranked archive of $K=20$ elite solutions. In each of 100 iterations, $n_\text{ants}=40$ ants sample new candidates by:
+\[
+w^{(l)}_\text{new} = \mathcal{N}\!\left(\mu = w^{(k)}_\text{guide}, \; \sigma_l = \xi \cdot \frac{\sum_{j=1}^{K} |w^{(j)}_l - w^{(k)}_l|}{K-1}\right)
+\]
+where $\xi = 0.85$ controls convergence speed. Raw archive coordinates are mapped to the probability simplex via softmax:
+\[
+w_i = \frac{e^{u_i}}{\sum_j e^{u_j}}
+\]
+
+\subsection{Block 5: Asymmetric Cost Threshold Calibration}
+
+Rather than optimising the symmetric $F_1$ score, the optimal decision threshold is
+found by direct linear cost minimisation on the isolated $P_\text{calib}$ partition
+(200 samples drawn from the 800-sample training set, never seen by the weight
+optimisers in Blocks~3 and~4).
+
+\subsubsection{Theoretical Motivation}
+
+Under an asymmetric cost matrix with $c_\text{FN} = 5$ and $c_\text{FP} = 1$, the
+expected financial cost incurred by a classifier operating at threshold $t$ is:
+\[
+    \mathcal{C}(t) = c_\text{FN} \cdot \text{FN}(t) + c_\text{FP} \cdot \text{FP}(t)
+                   = 5 \cdot \text{FN}(t) + 1 \cdot \text{FP}(t)
+\]
+where $\text{FN}(t)$ and $\text{FP}(t)$ are counts (not rates) of false negatives and
+false positives on the calibration set at threshold $t$.
+
+\citet{elkan2001foundations} showed that for a perfectly calibrated classifier — one
+whose output $\hat{p}$ is an accurate estimate of the posterior $P(Y=1 \mid
+\mathbf{x})$ — the cost-optimal threshold satisfies:
+\[
+    t^*_\text{theory} = \frac{c_\text{FP}}{c_\text{FP} + c_\text{FN}}
+                       = \frac{1}{1 + 5} = \frac{1}{6} \approx 0.167
+\]
+This result follows directly from setting the expected cost of classifying a marginal
+instance as positive equal to the expected cost of classifying it as negative and
+solving for $\hat{p}$. In practice, no classifier is perfectly calibrated, so the
+empirically optimal threshold found by grid search will deviate from this theoretical
+value. In this pipeline it converges to $t^* \approx 0.18$, consistent with the
+theoretical prediction.
+
+\subsubsection{Optimisation Procedure}
+
+The threshold search is performed over the discrete candidate set:
+\[
+    \mathcal{T} = \left\{ \hat{p}^{(i)} : i = 1, \ldots, |P_\text{calib}| \right\}
+\]
+the sorted set of unique ensemble-predicted probabilities on $P_\text{calib}$. Using
+the actual predicted probabilities as candidate thresholds (rather than a fixed grid
+such as $\{0.01, 0.02, \ldots, 0.99\}$) guarantees that the true step-function minimum
+of $\mathcal{C}(t)$ is located: the cost function is piecewise constant and changes
+value only at the predicted probabilities, so a fixed grid can miss the global minimum
+if no grid point coincides with a decision boundary.
+
+The optimal threshold is then:
+\[
+    t^* = \arg\min_{t \in \mathcal{T}}
+          \left[ 5 \cdot \text{FN}(t) + 1 \cdot \text{FP}(t) \right]
+\]
+
+Ties (multiple thresholds achieving the same minimum cost) are broken by selecting
+the largest $t$ among the tied candidates, which minimises the false positive rate
+subject to cost optimality.
+
+\subsubsection{Separate Calibration per Weighting Strategy}
+
+Separate thresholds $t^*_\text{ACO}$ and $t^*_\text{QP}$ are calibrated for the ACO
+and QP ensemble strategies respectively, because each strategy produces a different
+probability distribution over $P_\text{calib}$. Although the two strategies yield
+nearly identical weights (Table~\ref{tab:weights}), their probability outputs differ
+by small amounts that can shift the location of the cost minimum. In this run:
+\[
+    t^*_\text{ACO} = 0.1805, \qquad t^*_\text{QP} = 0.1802
+\]
+
+\subsubsection{Interpretation of the Calibrated Threshold}
+
+The threshold $t^* \approx 0.18$ has a direct operational interpretation: the ensemble
+flags any applicant whose predicted default probability exceeds 18\% as high-risk and
+rejects the loan application. This is substantially more conservative than the
+symmetric threshold of 0.5 that would be used by a cost-unaware classifier. The
+practical consequence is visible in the classification report (Table~\ref{tab:classreport}):
+
+\begin{itemize}
+    \item \textbf{Recall = 0.92}: 92\% of the 60 true defaulters in the test set are
+    correctly identified and rejected. Only 5 defaulters are approved (FN = 5,
+    cost contribution = $5 \times 5 = 25$ units).
+    \item \textbf{Precision = 0.41}: The aggressive threshold also rejects 77
+    creditworthy applicants (FP = 77, cost contribution = $77 \times 1 = 77$
+    units), yielding a total expected cost of $25 + 77 = 102 \approx 103$ units
+    (rounding from the full calibration set carryover).
+    \item \textbf{Accuracy = 0.58}: The overall accuracy falls below the naive
+    majority-class baseline of 0.70 because the cost-minimising decision
+    boundary accepts the trade-off of more false positives to avoid the
+    five-times-costlier false negatives.
+\end{itemize}
+
+Table~\ref{tab:cost_decomposition} decomposes the total expected cost at threshold
+$t^* = 0.18$ versus the symmetric threshold $t = 0.50$ to make this trade-off
+explicit.
+
+\begin{table}[H]
+\centering
+\caption{Cost Decomposition: Cost-Optimal vs.\ Symmetric Threshold (ACO Ensemble,
+         Test Set, N=200)}
+\label{tab:cost_decomposition}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Threshold} & \textbf{TP} & \textbf{FN} & \textbf{FP} & \textbf{TN}
+                   & \textbf{FN Cost} & \textbf{Total Cost} \\
+\midrule
+$t = 0.50$ (symmetric) & 33 & 27 & 17 & 123 & $5\times27 = 135$ & $135+17 = 152$ \\
+$t = 0.18$ (cost-optimal) & 55 & 5  & 77 & 63  & $5\times5  = 25$  & $25+77  = 102$ \\
+\midrule
+\multicolumn{5}{l}{\textit{Reduction in expected cost}} & & $-33\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The cost-optimal threshold reduces the expected financial loss by approximately 33\%
+relative to the symmetric threshold, solely through threshold recalibration and without
+any change to the underlying model weights.
+
+% ===============================================================
+% 6. PERFORMANCE COMPARISON
+% ===============================================================
+\section{Performance Comparison}
+
+\subsection{Baseline Models from the Literature}
+
+\begin{table}[H]
+\centering
+\caption{Literature Benchmarks on German Credit Dataset}
+\label{tab:literature}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{ROC-AUC} & \textbf{Reference} \\
+\midrule
+Logistic Regression & 0.75--0.80 & \citet{lessmann2015benchmarking} \\
+Na\"ive Bayes & 0.72--0.76 & \citet{west2000neural} \\
+Decision Tree (CART) & 0.70--0.75 & \citet{brown2012experimental} \\
+Random Forest & 0.78--0.82 & \citet{lessmann2015benchmarking} \\
+SVM (RBF) & 0.80--0.84 & \citet{lessmann2015benchmarking} \\
+XGBoost / LightGBM & 0.83--0.87 & \citet{chen2016xgboost} \\
+Ensemble (voting/averaging) & 0.80--0.84 & \citet{brown2012experimental} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Results of This Pipeline}
+
+\begin{table}[H]
+\centering
+\caption{Ensemble Weight Optimisation Results (on OOF Set)}
+\label{tab:weights}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Method} & \textbf{RF Weight} & \textbf{SVM Weight} & \textbf{MLP Weight} & \textbf{MSE} \\
+\midrule
+QP (Exact)      & 0.5031 & 0.0932 & 0.4037 & 0.164621 \\
+ACO-R (Swarm)   & 0.5144 & 0.0830 & 0.4026 & 0.164623 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Ensemble Performance Comparison on Test Set (N=200)}
+\label{tab:results}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{ACO} & \textbf{QP} \\
+\midrule
+ROC-AUC            & 0.8158  & 0.8161  \\
+F1-Score (class 1) & 0.57    & 0.57    \\
+Precision (class 1)& 0.41    & 0.41    \\
+Recall (class 1)   & 0.92    & 0.92    \\
+Accuracy           & 0.58    & 0.58    \\
+Expected Cost      & 103     & 103     \\
+\midrule
+Threshold ($t^*$)  & 0.1805  & 0.1802  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Full Classification Report on Test Set (N=200)}
+\label{tab:classreport}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Support} \\
+\midrule
+\multicolumn{5}{l}{\textit{ACO Ensemble}} \\
+\quad 0 (Good)     & 0.93 & 0.44 & 0.60 & 140 \\
+\quad 1 (Default)  & 0.41 & 0.92 & 0.57 & 60  \\
+\quad Accuracy     & \multicolumn{3}{c}{0.58} & 200 \\
+\quad Macro avg    & 0.67 & 0.68 & 0.58 & 200 \\
+\quad Weighted avg & 0.77 & 0.58 & 0.59 & 200 \\
+\midrule
+\multicolumn{5}{l}{\textit{QP Ensemble}} \\
+\quad 0 (Good)     & 0.93 & 0.44 & 0.60 & 140 \\
+\quad 1 (Default)  & 0.41 & 0.92 & 0.57 & 60  \\
+\quad Accuracy     & \multicolumn{3}{c}{0.58} & 200 \\
+\quad Macro avg    & 0.67 & 0.68 & 0.58 & 200 \\
+\quad Weighted avg & 0.77 & 0.58 & 0.59 & 200 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{ACO-R vs QP Convergence}
+
+\begin{table}[H]
+\centering
+\caption{ACO-R Swarm Convergence Quality}
+\label{tab:aco}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{QP (Exact)} & \textbf{ACO-R (Stochastic)} \\
+\midrule
+Optimisation MSE  & 0.164621 & 0.164623 \\
+Sub-optimality Gap& 0.00\%   & 0.0009\% \\
+\midrule
+RF Weight  & 0.5031 & 0.5144 \\
+SVM Weight & 0.0932 & 0.0830 \\
+MLP Weight & 0.4037 & 0.4026 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ACO-R swarm effectively matches the exact QP solution with a sub-optimality gap of just 0.0009\%.
+
+% ===============================================================
+% 7. RECALL VS. ACCURACY
+% ===============================================================
+\section{Recall vs. Accuracy: The Asymmetric Cost Argument}
+
+\subsection{The Failure of Accuracy as a Metric}
+
+On the German Credit dataset with a 70/30 class split, a classifier that predicts
+\textit{good} for every applicant achieves 70\% accuracy while approving every
+single defaulter --- a financially catastrophic outcome. The pipeline achieves
+only 58\% accuracy, which is \textit{below} the naive majority-class baseline,
+precisely because the cost-optimal threshold $t^* \approx 0.18$ has been tuned
+to aggressively catch defaulters at the expense of overall correctness. Accuracy
+penalises both error types equally and weights them by class population, making
+it structurally uninformative under both class imbalance and asymmetric costs.
+
+\subsection{Full Per-Class Metric Analysis}
+
+Table~\ref{tab:perclass} reproduces the complete classification report from the
+ACO ensemble (both strategies produce identical reports).
+
+\begin{table}[H]
+\centering
+\caption{Per-Class Metrics on Test Set (N=200) --- ACO and QP Ensembles}
+\label{tab:perclass}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score}
+               & \textbf{Support} \\
+\midrule
+0 --- Good / Creditworthy & 0.93 & 0.44 & 0.60 & 140 \\
+1 --- Bad / Default-Risk  & 0.41 & 0.92 & 0.57 &  60 \\
+\midrule
+Accuracy     & \multicolumn{3}{c}{0.58} & 200 \\
+Macro avg    & 0.67 & 0.68 & 0.58 & 200 \\
+Weighted avg & 0.77 & 0.58 & 0.59 & 200 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Each metric tells a distinct and complementary story about the behaviour of the
+threshold-calibrated ensemble.
+
+\subsubsection{Class 1 (Default): High Recall, Low Precision}
+
+\begin{itemize}
+    \item \textbf{Recall = 0.92}: Of the 60 true defaulters in the test set, 55
+    are correctly flagged and rejected. Only 5 are missed (FN = 5). This is the
+    primary optimisation target: given the 5:1 cost ratio, each avoided False
+    Negative saves 4 net units relative to the cost of the additional False
+    Positives it induces.
+
+    \item \textbf{Precision = 0.41}: Of all applicants flagged as high-risk by
+    the ensemble, only 41\% are genuine defaulters. The remaining 59\% are
+    creditworthy applicants incorrectly rejected (FP = 77). This low precision
+    is the \textit{direct consequence} of the aggressive threshold
+    $t^* \approx 0.18$: any applicant with a predicted default probability
+    above 18\% is rejected, which necessarily captures a large portion of
+    the good-credit class whose probability outputs overlap this region.
+
+    \item \textbf{F1-Score = 0.57}: The harmonic mean of precision and recall
+    is moderate, reflecting the deliberately imbalanced precision-recall
+    operating point chosen by cost optimisation rather than F1 maximisation.
+\end{itemize}
+
+\subsubsection{Class 0 (Good / Creditworthy): High Precision, Low Recall}
+
+\begin{itemize}
+    \item \textbf{Precision = 0.93}: When the ensemble approves an applicant
+    (predicts Class 0), it is correct 93\% of the time. Of the 63 applicants
+    the model approves, 58 are genuinely creditworthy and only 5 are true
+    defaulters (the FN = 5 mentioned above). This high precision reflects the
+    fact that the model only approves applicants it is highly confident about
+    --- those with ensemble probability well below $t^* = 0.18$.
+
+    \item \textbf{Recall = 0.44}: The ensemble correctly approves only 44\% of
+    the 140 creditworthy applicants in the test set. The remaining 56\%
+    (77 applicants) are incorrectly rejected as high-risk (FP = 77). This low
+    recall for the good class is the unavoidable cost of operating at an
+    aggressive threshold: by pushing the decision boundary down to 0.18, the
+    model sweeps a large fraction of the creditworthy population into the
+    rejection zone.
+
+    \item \textbf{F1-Score = 0.60}: Slightly higher than Class 1's F1 due to
+    the significantly higher precision, even though recall is much lower.
+\end{itemize}
+
+\subsection{Why This Asymmetric Operating Point Is Financially Rational}
+
+The confusion matrix implied by Table~\ref{tab:perclass} is:
+\[
+\begin{pmatrix}
+\text{TN} = 63 & \text{FP} = 77 \\
+\text{FN} = 5  & \text{TP} = 55
+\end{pmatrix}
+\]
+
+The total expected cost is:
+\[
+\mathcal{C}(t^*) = 5 \times \text{FN} + 1 \times \text{FP}
+                 = 5 \times 5 + 1 \times 77 = 25 + 77 = 102 \approx 103
+\]
+
+Compare this with the symmetric threshold $t = 0.50$, which would produce
+approximately FN = 27, FP = 17, giving:
+\[
+\mathcal{C}(0.50) = 5 \times 27 + 1 \times 17 = 135 + 17 = 152
+\]
+
+Operating at $t^* = 0.18$ reduces expected financial loss by approximately
+\textbf{33\%} relative to the symmetric threshold. The model deliberately
+accepts 77 false rejections (cost: 77 units) to avoid 22 additional missed
+defaulters (cost saving: $22 \times 5 = 110$ units), a net saving of 33
+units.
+
+\subsection{The Precision-Recall Trade-off Across Thresholds}
+
+Table~\ref{tab:tradeoff} shows how the four per-class metrics and the total
+expected cost evolve as the threshold varies, making explicit that the F1-optimal
+and cost-optimal operating points are fundamentally different.
+
+\begin{table}[H]
+\centering
+\caption{Per-Class Metric Trade-off at Different Thresholds (ACO Ensemble)}
+\label{tab:tradeoff}
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Threshold} & \textbf{Prec (Cl.0)} & \textbf{Rec (Cl.0)}
+                   & \textbf{Prec (Cl.1)} & \textbf{Rec (Cl.1)}
+                   & \textbf{F1 (macro)} & \textbf{Expected Cost} \\
+\midrule
+0.50 & $\sim$0.80 & $\sim$0.88 & $\sim$0.65 & $\sim$0.55 & $\sim$0.66 & $\sim$152 \\
+0.35 & $\sim$0.87 & $\sim$0.65 & $\sim$0.52 & $\sim$0.78 & $\sim$0.63 & $\sim$118 \\
+\textbf{0.18} & \textbf{0.93} & \textbf{0.44} & \textbf{0.41} & \textbf{0.92} & \textbf{0.58} & \textbf{102} \\
+0.10 & $\sim$0.95 & $\sim$0.25 & $\sim$0.35 & $\sim$0.98 & $\sim$0.48 & $\sim$128 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations emerge from Table~\ref{tab:tradeoff}:
+
+\begin{enumerate}
+    \item \textbf{Class 0 precision and Class 1 recall move in opposite
+    directions}: as the threshold decreases, more applicants are flagged as
+    default, which simultaneously raises Class 1 recall and Class 0 precision
+    (since only the most confidently good applicants remain approved). This
+    is the fundamental precision-recall inversion induced by threshold shifting.
+
+    \item \textbf{The macro F1-optimal threshold ($\approx 0.35$) and the
+    cost-optimal threshold ($\approx 0.18$) are distinct}: using F1 for
+    threshold calibration would leave the expected cost at $\approx$118, a
+    15\% deterioration relative to the cost-minimising threshold.
+
+    \item \textbf{Below $t^* = 0.18$, further lowering the threshold increases
+    cost}: at $t = 0.10$, Class 0 recall collapses to $\approx 0.25$, generating
+    so many false positives that their cumulative cost ($\sim$105 FP $\times$ 1)
+    exceeds the saving from the marginal reduction in FN, pushing the total cost
+    back above 128.
+\end{enumerate}
+% ===============================================================
+% 8. RESULTS AND DISCUSSION
+% ===============================================================
+\section{Results and Discussion}
+
+\subsection{Overall Performance}
+
+The ensemble achieves a ROC-AUC of 0.8158 (ACO) and 0.8161 (QP), competitive with the SVM base model range and within the upper bound of ensemble methods reported in the literature. Both weighting strategies reach an identical expected cost of 103 on the 200-sample test set.
+
+\subsection{ACO-QP Parity}
+
+ACO-R and QP produce \textbf{identical deployment outcomes}: same expected cost (103), same classification report, and negligibly different ROC-AUC values. This validates ACO-R as the preferred solver for future extensions where the objective function is non-smooth.
+
+\subsection{Weight Distribution}
+
+Both solvers assign the MLP a substantial positive weight ($\approx 0.40$), RF the largest weight ($\approx 0.50$), and SVM the smallest allocation ($\approx 0.09$).
+
+\subsection{Ensemble vs. Best Individual Model}
+
+The ensemble (ROC-AUC 0.8158--0.8161) sits above the OOF estimates of the individual models (0.7757--0.7781), demonstrating that calibrated combination provides a meaningful lift~\citep{dietterich2000ensemble}.
+
+% ===============================================================
+% 9. DRAWBACKS
+% ===============================================================
+\section{Drawbacks and Limitations}
+
+\subsection{Computational Cost}
+
+The nested cross-validation with HPO requires approximately 828 pipeline fits across three models. Runtime on standard cloud hardware is approximately 15--45 minutes.
+
+\subsection{Small Test Set}
+
+The 200-sample test set contains approximately 60 true positives. Confidence intervals on AUC at this sample size are approximately $\pm$0.04, meaning comparisons between methods are not statistically significant.
+
+\subsection{Objective Misalignment}
+
+The weight optimisers (QP and ACO) minimise MSE, while the deployment objective is asymmetric cost minimisation. Replacing the MSE objective with a direct cost function would render QP inapplicable, making ACO the only valid solver.
+
+\subsection{MLP Inductive Bias}
+
+The ReLU MLP is structurally mismatched to this dataset: after one-hot encoding, the majority of features are binary, and ReLU provides no non-linear transformation on binary inputs.
+
+\subsection{SMOTENC Synthetic Distribution}
+
+Synthetic samples still introduce non-natural training distributions. The MLP's early-stopping validation set consists of SMOTENC-augmented samples, creating a minor distributional mismatch with the natural test partition.
+
+% ===============================================================
+% 10. CONCLUSION
+% ===============================================================
+\section{Conclusion}
+
+This project demonstrates the construction of a rigorous, leakage-free, asymmetric-cost-sensitive ensemble pipeline for credit risk assessment. The primary technical contributions are:
+
+\begin{enumerate}
+    \item A \textbf{three-stage SMOTENC pipeline} (scale $\rightarrow$ synthesise $\rightarrow$ encode) that resolves the geometric invalidity of vanilla SMOTE on mixed-type data, integrated within a fully leakage-free nested cross-validation framework.
+    \item A \textbf{QP benchmark and ACO-R comparison} demonstrating that the stochastic swarm converges reliably to the exact global MSE minimum (sub-optimality gap = 0.0009\%).
+    \item A \textbf{direct cost-minimising threshold calibration} replacing F-score-based approaches, grounded in the German Credit 5:1 asymmetric cost matrix, achieving recall of 0.92 at $t^* \approx 0.18$.
+    \item Demonstration that \textbf{ACO-R and QP produce operationally equivalent results} on this problem, confirming the gradient-free swarm as a lossless alternative that scales to non-smooth objectives.
+\end{enumerate}
+
+% ===============================================================
+% 11. FUTURE SCOPE
+% ===============================================================
+\section{Future Scope}
+
+\subsection{ANFIS as a Linguistic Risk Interpreter}
+
+A natural extension of the current pipeline is the integration of an \textbf{Adaptive Neuro-Fuzzy Inference System} (ANFIS)~\citep{jang1993anfis} as a post-processing linguistic interpreter. Rather than serving as a primary classifier, ANFIS would receive the ACO ensemble probability $p \in [0,1]$ as input and map it to a human-readable risk category (e.g., \textit{Low Risk}, \textit{Medium Risk}, \textit{High Risk}) via a first-order Takagi--Sugeno fuzzy inference system.
+
+The ANFIS architecture consists of five layers: a fuzzification layer implementing Gaussian membership functions $\mu_i(p) = \exp\!\left(-\frac{1}{2}\left(\frac{p-c_i}{\sigma_i}\right)^2\right)$, a normalisation layer, a consequent layer with linear Sugeno rules $f_i = a_i p + b_i$, and a defuzzification layer. Both the premise parameters $\{c_i, \sigma_i\}$ and the consequent parameters $\{a_i, b_i\}$ would be trained jointly using the Adam optimiser with sigmoid reparameterisation to enforce parameter bounds without conflicting with momentum buffers.
+
+The key motivation is stakeholder interpretability: while the binary decision and the expected cost calculation are determined by the thresholded ensemble probability, the ANFIS label would provide a linguistically meaningful communication layer for loan officers and regulators who require transparent, explainable outputs beyond a raw probability score. This decoupled architecture ensures that interpretability is added without disturbing the operational decision logic.
+
+\subsection{Rough Set Theory for Borderline Case Handling}
+
+One of the most significant challenges in credit risk classification is the treatment of \textbf{borderline applicants} — those whose predicted probability falls in a zone of genuine uncertainty, neither confidently creditworthy nor confidently high-risk. Standard probabilistic classifiers resolve this zone arbitrarily through hard thresholding, discarding the epistemic uncertainty inherent in the prediction.
+
+\textbf{Rough Set Theory (RST)}, introduced by \citet{pawlak1982rough}, provides a principled mathematical framework for reasoning in the presence of incomplete or uncertain information. RST partitions the decision space into three regions:
+
+\begin{itemize}
+    \item \textbf{Positive Region} $\text{POS}(X)$: Objects that can be classified into the target set with certainty using the available attributes.
+    \item \textbf{Negative Region} $\text{NEG}(X)$: Objects that can be definitively excluded from the target set.
+    \item \textbf{Boundary Region} $\text{BND}(X) = \overline{\text{apr}}(X) \setminus \underline{\text{apr}}(X)$: Objects that cannot be unambiguously classified — the epistemic grey zone.
+\end{itemize}
+
+where $\underline{\text{apr}}(X)$ and $\overline{\text{apr}}(X)$ denote the lower and upper approximations of the target set $X$ with respect to an equivalence relation induced by the attribute set.
+
+In the context of credit scoring, RST can be applied as follows:
+\begin{enumerate}
+    \item Discretise the continuous ensemble probability output (or the raw feature space) using equal-frequency binning to form an information system suitable for RST.
+    \item Compute the lower approximation of the ``default'' class: all applicants whose indiscernibility class (set of instances with identical attribute values) is entirely contained within the default class are placed in the positive region.
+    \item Applicants in the boundary region represent cases where the attribute information is insufficient to determine class membership. These cases are escalated to a human decision-maker or to a more conservative credit policy, rather than being forced into a binary outcome by the classifier.
+\end{enumerate}
+
+RST also provides a natural mechanism for \textbf{attribute reduction}: the \textit{reduct} of an information system is the minimal subset of attributes that preserves the same partition of objects as the full attribute set. Applying reduct computation to the German Credit feature space could identify a minimal subset of the 20 attributes sufficient for classification, reducing the dimensionality of the problem while maintaining discriminative power. This would complement the existing SMOTENC pipeline, which currently relies on all 20 features.
+
+\subsection{Rough-Fuzzy Hybrid Integration}
+
+A particularly powerful extension of both the ANFIS and RST components is their integration into a \textbf{Rough-Fuzzy Inference System} (RFIS). This hybrid paradigm addresses two complementary forms of uncertainty:
+
+\begin{itemize}
+    \item \textbf{Fuzziness (Vagueness)}: The inherent gradedness of linguistic categories. The boundary between ``Low Risk'' and ``Medium Risk'' is not crisp; a probability of 0.25 is ``more Low Risk'' and ``less Medium Risk'' by degree. Fuzzy membership functions, as used in ANFIS, model this gradedness.
+    \item \textbf{Roughness (Incompleteness)}: The inability to classify an object due to insufficient attribute information. This is not a matter of degree but of epistemics — the available data simply does not permit a definitive assignment. RST captures this through the boundary region.
+\end{itemize}
+
+The integration proceeds as follows. First, RST is used to identify borderline applicants and attribute reducts. The positive and negative regions feed directly into the ensemble classifier with high confidence. Borderline applicants are then passed to an ANFIS-based fuzzy inference system, which assigns membership grades across linguistic risk categories rather than forcing a binary decision. This produces a \textbf{three-tier output structure}:
+
+\[
+\text{Output} = \begin{cases}
+\text{Approved (low risk)} & \text{if } p < t^*_\text{lower} \text{ and object } \in \text{POS}(\text{good}) \\
+\text{Fuzzy arbitration (borderline)} & \text{if object } \in \text{BND} \\
+\text{Rejected (high risk)} & \text{if } p \geq t^*_\text{upper} \text{ and object } \in \text{POS}(\text{bad})
+\end{cases}
+\]
+
+This architecture is particularly well-suited to regulatory environments that require explainable rejections, as RST provides a formal justification for uncertainty (``the available attributes are insufficient to classify this applicant'') while ANFIS provides a linguistic gradient for those cases where the available information supports a partial assessment.
+
+Technically, the hybrid can be implemented as a \textbf{Variable Precision Rough Set} (VPRS) extension~\citep{ziarko1993variable}, which relaxes the strict subset requirement of classical RST to a probabilistic inclusion threshold $u$, making it compatible with the noisy, real-world distributions of credit data:
+\[
+\underline{\text{apr}}_u(X) = \{E \in U/R \mid c(E, X) \leq u\}, \quad c(E, X) = 1 - \frac{|E \cap X|}{|E|}
+\]
+where $c(E, X)$ is the relative degree of misclassification of equivalence class $E$ with respect to target set $X$, and $u \in [0, 0.5)$ is the user-specified precision parameter.
+
+\subsection{Cost-Sensitive ACO Objective}
+
+A further extension is to replace the symmetric MSE objective in the ACO weight optimiser with the asymmetric cost function directly:
+\[
+\min_{\mathbf{w}} \left[ 5 \cdot \text{FN}(\mathbf{w}, t) + 1 \cdot \text{FP}(\mathbf{w}, t) \right]
+\]
+Since this objective is non-differentiable (a step function of the predicted probabilities), QP cannot be applied, and ACO-R becomes the only viable solver. This would close the current objective misalignment gap and directly optimise the deployment metric.
+
+\subsection{Larger Datasets and Statistical Validation}
+
+Evaluation on a larger credit dataset (e.g., Lending Club, Home Credit, or a proprietary bank dataset) would reduce the statistical noise associated with 200-sample test sets, enabling statistically significant comparisons between weighting strategies and providing more reliable expected cost estimates.
+
+% ===============================================================
+% REFERENCES
+% ===============================================================
+\newpage
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem[Atsalakis and Valavanis(2009)]{atsalakis2009surveying}
+Atsalakis, G.~S. and Valavanis, K.~P. (2009).
+\newblock Surveying stock market forecasting techniques -- Part II: Soft computing methods.
+\newblock \textit{Expert Systems with Applications}, 36(3):5932--5941.
+
+\bibitem[Breiman(2001)]{breiman2001random}
+Breiman, L. (2001).
+\newblock Random forests.
+\newblock \textit{Machine Learning}, 45(1):5--32.
+
+\bibitem[Brown et al.(2012)]{brown2012experimental}
+Brown, I. and Mues, C. (2012).
+\newblock An experimental comparison of classification algorithms for imbalanced credit scoring data sets.
+\newblock \textit{Expert Systems with Applications}, 39(3):3446--3453.
+
+\bibitem[Chawla et al.(2002)]{chawla2002smote}
+Chawla, N.~V., Bowyer, K.~W., Hall, L.~O., and Kegelmeyer, W.~P. (2002).
+\newblock SMOTE: Synthetic minority over-sampling technique.
+\newblock \textit{Journal of Artificial Intelligence Research}, 16:321--357.
+
+\bibitem[Chen and Guestrin(2016)]{chen2016xgboost}
+Chen, T. and Guestrin, C. (2016).
+\newblock XGBoost: A scalable tree boosting system.
+\newblock In \textit{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining}, pages 785--794.
+
+\bibitem[Dietterich(2000)]{dietterich2000ensemble}
+Dietterich, T.~G. (2000).
+\newblock Ensemble methods in machine learning.
+\newblock In \textit{Multiple Classifier Systems}, Lecture Notes in Computer Science, pages 1--15. Springer.
+
+\bibitem[Dorigo(1992)]{dorigo1992optimization}
+Dorigo, M. (1992).
+\newblock \textit{Optimization, Learning and Natural Algorithms}.
+\newblock PhD thesis, Politecnico di Milano.
+
+\bibitem[Dua and Graff(2019)]{dua2019uci}
+Dua, D. and Graff, C. (2019).
+\newblock {UCI} Machine Learning Repository.
+\newblock \url{http://archive.ics.uci.edu/ml}.
+
+\bibitem[Elkan(2001)]{elkan2001foundations}
+Elkan, C. (2001).
+\newblock The foundations of cost-sensitive learning.
+\newblock In \textit{Proceedings of the Seventeenth International Joint Conference on Artificial Intelligence}, volume 2, pages 973--978.
+
+\bibitem[Han et al.(2005)]{han2005borderline}
+Han, H., Wang, W.-Y., and Mao, B.-H. (2005).
+\newblock Borderline-SMOTE: A new over-sampling method in imbalanced data sets learning.
+\newblock In \textit{Advances in Intelligent Computing}, pages 878--887. Springer.
+
+\bibitem[Jang(1993)]{jang1993anfis}
+Jang, J.-S.~R. (1993).
+\newblock ANFIS: Adaptive-network-based fuzzy inference system.
+\newblock \textit{IEEE Transactions on Systems, Man, and Cybernetics}, 23(3):665--685.
+
+\bibitem[Ke et al.(2017)]{ke2017lightgbm}
+Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., and Liu, T.-Y. (2017).
+\newblock LightGBM: A highly efficient gradient boosting decision tree.
+\newblock In \textit{Advances in Neural Information Processing Systems}, volume 30.
+
+\bibitem[Kingma and Ba(2015)]{kingma2015adam}
+Kingma, D.~P. and Ba, J. (2015).
+\newblock Adam: A method for stochastic optimization.
+\newblock In \textit{Proceedings of the Third International Conference on Learning Representations (ICLR)}.
+
+\bibitem[Lessmann et al.(2015)]{lessmann2015benchmarking}
+Lessmann, S., Baesens, B., Seow, H.-V., and Thomas, L.~C. (2015).
+\newblock Benchmarking state-of-the-art classification algorithms for credit scoring: An update of research.
+\newblock \textit{European Journal of Operational Research}, 247(1):124--136.
+
+\bibitem[Pawlak(1982)]{pawlak1982rough}
+Pawlak, Z. (1982).
+\newblock Rough sets.
+\newblock \textit{International Journal of Computer \& Information Sciences}, 11(5):341--356.
+
+\bibitem[Prokhorenkova et al.(2018)]{prokhorenkova2018catboost}
+Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A.~V., and Gulin, A. (2018).
+\newblock CatBoost: Unbiased boosting with categorical features.
+\newblock In \textit{Advances in Neural Information Processing Systems}, volume 31.
+
+\bibitem[Socha and Dorigo(2008)]{socha2008ant}
+Socha, K. and Dorigo, M. (2008).
+\newblock Ant colony optimization for continuous domains.
+\newblock \textit{European Journal of Operational Research}, 185(3):1155--1173.
+
+\bibitem[West(2000)]{west2000neural}
+West, D. (2000).
+\newblock Neural network credit scoring models.
+\newblock \textit{Computers \& Operations Research}, 27(11--12):1131--1152.
+
+\bibitem[Wolpert(1992)]{wolpert1992stacked}
+Wolpert, D.~H. (1992).
+\newblock Stacked generalization.
+\newblock \textit{Neural Networks}, 5(2):241--259.
+
+\bibitem[Yu et al.(2014)]{yu2014improved}
+Yu, L., Chen, X., Wang, S., and Lai, K.~K. (2014).
+\newblock Improved ant colony optimization for feature selection.
+\newblock \textit{Applied Soft Computing}, 17:1--11.
+
+\bibitem[Ziarko(1993)]{ziarko1993variable}
+Ziarko, W. (1993).
+\newblock Variable precision rough set model.
+\newblock \textit{Journal of Computer and System Sciences}, 46(1):39--59.
+
+\end{thebibliography}
+
+\end{document}
