@@ -345,7 +345,15 @@ $\downarrow$ \\
 \subsection{Block 1: Data Ingestion and Splitting}
 
 The raw dataset is immediately bifurcated into training (800 samples) and test (200 samples) partitions using stratified sampling. No preprocessing of any kind is applied before this split.
-
+Stratified sampling ensures that the class distribution in each split (train and test) matches the overall dataset. In this case:
+the dataset has approximately 70\% “good” and 30\% “default”.
+\newline Stratification makes sure the training set and test set roughly preserve this 70/30 ratio.
+This is crucial for imbalanced classification, because most credit datasets have far fewer defaulters than good borrowers.
+\newline What happens if we don’t stratify:
+Class imbalance may get amplified or distorted in the splits.
+We could randomly get a training set with 85\% “good” and only 15\% “default,” which is not representative.
+Model performance metrics (accuracy, F1, recall for the minority class) could be unreliable.
+Evaluation on the test set might overestimate or underestimate performance, because the test set might have a very different class distribution.
 \subsection{Block 2: Three-Stage Mixed-Data Synthesis and Nested Cross-Validation}
 
 \subsubsection{Preprocessing Stage 1: Spatial Conditioning}
