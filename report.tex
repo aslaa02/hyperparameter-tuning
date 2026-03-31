@@ -49,26 +49,26 @@
 \centering
 \vspace*{1.5cm}
 
-{\LARGE \textbf{Asymmetric Cost-Sensitive Ensemble Credit Risk Assessment}}\\[0.8cm]
+{\LARGE \textbf{Ensemble Credit Risk Assessment}}\\[0.8cm]
 {\large Using Ant Colony Optimisation and Quadratic Programming}\\[2.5cm]
 
 {\large \textbf{Project Team}}\\[0.6cm]
 {\normalsize
-[Team Member 1 --- Roll No.]\\[0.3cm]
-[Team Member 2 --- Roll No.]\\[0.3cm]
-[Team Member 3 --- Roll No.]\\[0.3cm]
-[Team Member 4 --- Roll No.]\\[0.3cm]
-[Team Member 5 --- Roll No.]\\[1.5cm]
+\textbf{Asla M --- Roll No. 25022232}\\[0.3cm]
+\textbf{Ramees Mohammed M M --- Roll No. 25020292}\\[0.3cm]
+\textbf{Riya Roy --- Roll No. 25021814}\\[0.3cm]
+\textbf{U Krishnanunni --- Roll No. 25020719}\\[0.3cm]
+\textbf{Vandana M Gopal --- Roll No. 25020260}\\[1.5cm]
 }
 
-{\normalsize Submitted in partial fulfilment of the requirements for}\\[0.3cm]
-{\normalsize [Course Name and Code]}\\[0.3cm]
-{\normalsize [Department of Computer Science / Information Technology]}\\[0.3cm]
-{\normalsize [Institution Name]}\\[1.5cm]
+{\normalsize  Submitted in partial fulfilment of the requirements for}\\[0.3cm]
+{\normalsize \textbf{23-344-0207 Minor Project}\\[0.3cm]
+{\normalsize \textbf{Department of Computer Applications}\\[0.3cm]
+{\normalsize \textbf{Cochin Universtiy of Science and Technology}\\[1.5cm]
 
-{\normalsize Supervised by: [Supervisor Name]}\\[2cm]
+{\normalsize Supervised by: \textbf{Dr. Sabu M K \& Dr. Rafidha Rehiman}}\\[2cm]
 
-{\normalsize \today}
+{\normalsize April 1, 2026}
 
 \vfill
 \end{titlepage}
@@ -84,7 +84,7 @@
 % ===============================================================
 \section{Introduction}
 
-Credit risk assessment is the process by which a financial institution evaluates the probability that a borrower will fail to repay a loan. The consequences of mis-classification in this domain are fundamentally asymmetric: approving a loan to a borrower who subsequently defaults (a \textbf{False Negative}, FN) carries a financial cost estimated in the German Credit benchmark at five times the cost of incorrectly rejecting a creditworthy applicant (a \textbf{False Positive}, FP). Standard machine learning pipelines, which optimise symmetric metrics such as accuracy or the balanced $F_1$ score, are structurally misaligned with this asymmetry. This report documents the design, implementation, and evaluation of a multi-paradigm ensemble pipeline that addresses this misalignment directly.
+Credit risk assessment is the process by which a financial institution evaluates the probability that a borrower will fail to repay a loan. The consequences of misclassification in this domain are fundamentally asymmetric: approving a loan to a borrower who subsequently defaults (a \textbf{False Negative}, FN) carries a financial cost estimated in the German Credit benchmark at five times the cost of incorrectly rejecting a creditworthy applicant (a \textbf{False Positive}, FP). Standard machine learning pipelines, which optimise symmetric metrics such as accuracy or the balanced $F_1$ score, are structurally misaligned with this asymmetry. This report documents the design, implementation, and evaluation of a multi-paradigm ensemble pipeline that addresses this misalignment directly.
 
 \subsection{Motivation}
 
@@ -112,6 +112,7 @@ This project pursues three interconnected objectives:
     \item[Recall (Sensitivity)] The fraction of true defaulters correctly identified: $\text{Recall} = \text{TP} / (\text{TP} + \text{FN}) = 1 - \text{FNR}$.
 \end{description}
 
+
 % ===============================================================
 % 2. EXISTING SYSTEMS
 % ===============================================================
@@ -137,6 +138,7 @@ Credit scoring has been an active area of research since the 1960s. Three broad 
 
 Standard \textbf{Multilayer Perceptrons (MLPs)} have been applied to credit scoring since the 1990s. Their performance on the German Credit dataset is inconsistent, typically matching or falling slightly below SVM performance. The fundamental mismatch between ReLU activations and binary one-hot-encoded features (for which ReLU is effectively an identity function), combined with severe parameter-to-sample ratio issues (over 5,000 parameters on only 800--900 training samples), limits their practical utility on this scale of tabular data.
 
+\pagebreak
 % ===============================================================
 % 3. LITERATURE REVIEW
 % ===============================================================
@@ -160,6 +162,7 @@ t^* = \frac{c_\text{FP}}{c_\text{FP} + c_\text{FN}} = \frac{1}{6} \approx 0.167
 \]
 though the actual empirically optimal threshold depends on the specific probability distribution produced by the ensemble.
 
+\pagebreak
 \subsection{Swarm Intelligence in Model Combination}
 
 ACO, introduced by \citet{dorigo1992optimization} for discrete combinatorial problems (the Travelling Salesman Problem), was extended to continuous domains as ACO-R by \citet{socha2008ant}. The continuous variant models pheromone trails as a ranked archive of elite solutions and samples new candidates from Gaussian kernels centred on archive members. Applications of ACO-R to feature selection and hyperparameter optimisation in machine learning have been reported~\citep{yu2014improved}, but its use specifically for ensemble weight optimisation in credit risk assessment appears to be novel, representing a research gap this project explores.
@@ -232,11 +235,11 @@ Seven of the 20 features take numerical values and exhibit varying degrees of ri
 \midrule
 Duration (months) & Duration of the credit in months & 4 -- 72 & Right-skewed; most credits are short-term (12--24 months) \\
 Credit amount (DM) & Amount of credit requested & 250 -- 18,424 & Highly right-skewed; median $\approx$ 2,320 DM \\
-Instalment rate (\%) & Instalment as \% of disposable income & 1 -- 4 & Integer-valued but treated as ordinal continuous \\
+Installment rate (\%) & Installment as \% of disposable income & 1 -- 4 & Integer-valued but treated as ordinal continuous \\
 Residence duration & Years at current residence & 1 -- 4 & Integer-valued; relatively uniform distribution \\
 Age (years) & Age of the applicant & 19 -- 75 & Right-skewed; median $\approx$ 33 years \\
 Existing credits & Number of existing credits at this bank & 1 -- 4 & Integer-valued; most applicants have 1--2 credits \\
-Number of dependents & Number of dependants to provide for & 1 -- 2 & Binary integer; 84\% of applicants have 1 dependent \\
+Number of dependents & Number of dependents to provide for & 1 -- 2 & Binary integer; 84\% of applicants have 1 dependent \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -247,14 +250,20 @@ The credit amount feature is the most numerically extreme, spanning more than tw
 
 Thirteen features encode qualitative attributes of the applicant and the loan. Table~\ref{tab:cat_features} provides a complete enumeration.
 
-\begin{table}[H]
-\centering
+\begin{longtable}{p{3.5cm}p{5cm}p{4cm}}
 \caption{Categorical Features of the German Credit Dataset}
-\label{tab:cat_features}
-\begin{tabular}{p{3.5cm}p{5cm}p{4cm}}
+\label{tab:cat_features} \\
+
 \toprule
 \textbf{Feature} & \textbf{Description} & \textbf{Categories} \\
 \midrule
+\endfirsthead
+
+\toprule
+\textbf{Feature} & \textbf{Description} & \textbf{Categories} \\
+\midrule
+\endhead
+
 Checking account status & Balance in DM at the applicant's checking account & No account; $<$0 DM; 0--200 DM; $\geq$200 DM \\
 Credit history & Applicant's past credit repayment record & No credits taken; all credits paid; existing credits paid; delay in past; critical account \\
 Purpose & Purpose for which the loan is sought & Car (new/used), furniture, TV, appliances, repairs, education, vacation, retraining, business, other \\
@@ -263,15 +272,15 @@ Employment duration & Years in current employment & Unemployed; $<$1 year; 1--4 
 Personal status \& sex & Gender and marital status combination & Male divorced; female non-single; male single; male married/widowed; female single \\
 Other debtors/guarantors & Presence of co-applicant or guarantor & None; co-applicant; guarantor \\
 Property & Most valuable property owned & Real estate; savings/life insurance; car/other; unknown/no property \\
-Other instalment plans & Instalment plans at other institutions & Bank; stores; none \\
+Other installment plans & Installment plans at other institutions & Bank; stores; none \\
 Housing & Housing situation of the applicant & Rent; own; for free \\
 Job category & Employment type of the applicant & Unemployed/unskilled non-resident; unskilled resident; skilled employee; management/self-employed \\
+
 Telephone & Whether applicant has a registered telephone & Yes (under customer's name); no \\
 Foreign worker & Whether applicant is a foreign national & Yes; no \\
-\bottomrule
-\end{tabular}
-\end{table}
 
+\bottomrule
+\end{longtable}
 \subsubsection{Class Label and Cost Matrix}
 
 The binary target variable is coded as:
@@ -341,7 +350,7 @@ The raw dataset is immediately bifurcated into training (800 samples) and test (
 
 \subsubsection{Preprocessing Stage 1: Spatial Conditioning}
 
-Numerical features are scaled using \textbf{RobustScaler}, which centres each feature by its median and scales by its interquartile range (IQR):
+Numerical features are scaled using \textbf{RobustScaler}, which centres each feature by its median and scales by its inter-quartile range (IQR):
 \[
 z_i = \frac{x_i - \text{median}(\mathbf{x})}{\text{IQR}(\mathbf{x})}
 \]
@@ -351,9 +360,9 @@ RobustScaler has a breakdown point of 25\%, meaning it is unaffected by up to 25
 
 SMOTENC synthesises minority-class samples by:
 \begin{enumerate}
-    \item For each minority sample, identifying its $k=5$ nearest neighbours in the RobustScaled continuous feature space.
+    \item For each minority sample, identifying its $k=5$ nearest neighbors in the RobustScaled continuous feature space.
     \item For continuous features, interpolating: $\mathbf{x}_\text{new} = \mathbf{x}_i + \lambda (\mathbf{x}_j - \mathbf{x}_i)$ where $\lambda \sim \text{Uniform}(0,1)$.
-    \item For categorical features, selecting the mode of the $k$ nearest neighbours, preserving valid category membership.
+    \item For categorical features, selecting the mode of the $k$ nearest neighbors, preserving valid category membership.
 \end{enumerate}
 
 \subsubsection{Preprocessing Stage 2: Identity Cast and Orthogonal Expansion}
@@ -412,7 +421,7 @@ w_i = \frac{e^{u_i}}{\sum_j e^{u_j}}
 \subsection{Block 5: Asymmetric Cost Threshold Calibration}
 
 Rather than optimising the symmetric $F_1$ score, the optimal decision threshold is
-found by direct linear cost minimisation on the isolated $P_\text{calib}$ partition
+found by direct linear cost minimization on the isolated $P_\text{calib}$ partition
 (200 samples drawn from the 800-sample training set, never seen by the weight
 optimisers in Blocks~3 and~4).
 
@@ -523,6 +532,7 @@ The cost-optimal threshold reduces the expected financial loss by approximately 
 relative to the symmetric threshold, solely through threshold recalibration and without
 any change to the underlying model weights.
 
+\pagebreak
 % ===============================================================
 % 6. PERFORMANCE COMPARISON
 % ===============================================================
@@ -609,7 +619,7 @@ Threshold ($t^*$)  & 0.1805  & 0.1802  \\
 \bottomrule
 \end{tabular}
 \end{table}
-
+\text Note: Accuracy is a single metric for the whole dataset, not per class.
 \subsection{ACO-R vs QP Convergence}
 
 \begin{table}[H]
@@ -631,7 +641,10 @@ MLP Weight & 0.4037 & 0.4026 \\
 \end{table}
 
 The ACO-R swarm effectively matches the exact QP solution with a sub-optimality gap of just 0.0009\%.
-
+This means ACO-R essentially reproduces the exact optimal weights that QP would give.
+The “error” or difference is negligible, on the order of one-thousandth of a percent.
+For practical purposes, ACO-R is as good as the exact solution(The solution that fully satisfies the mathematical optimization problem and achieves the true global optimum of the objective function, given the problem’s constraints and formulation.).
+\pagebreak
 % ===============================================================
 % 7. RECALL VS. ACCURACY
 % ===============================================================
@@ -757,6 +770,8 @@ and cost-optimal operating points are fundamentally different.
 \centering
 \caption{Per-Class Metric Trade-off at Different Thresholds (ACO Ensemble)}
 \label{tab:tradeoff}
+
+\resizebox{\textwidth}{!}{
 \begin{tabular}{ccccccc}
 \toprule
 \textbf{Threshold} & \textbf{Prec (Cl.0)} & \textbf{Rec (Cl.0)}
@@ -769,6 +784,7 @@ and cost-optimal operating points are fundamentally different.
 0.10 & $\sim$0.95 & $\sim$0.25 & $\sim$0.35 & $\sim$0.98 & $\sim$0.48 & $\sim$128 \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 Three observations emerge from Table~\ref{tab:tradeoff}:
@@ -791,6 +807,8 @@ Three observations emerge from Table~\ref{tab:tradeoff}:
     exceeds the saving from the marginal reduction in FN, pushing the total cost
     back above 128.
 \end{enumerate}
+
+\pagebreak
 % ===============================================================
 % 8. RESULTS AND DISCUSSION
 % ===============================================================
@@ -799,7 +817,10 @@ Three observations emerge from Table~\ref{tab:tradeoff}:
 \subsection{Overall Performance}
 
 The ensemble achieves a ROC-AUC of 0.8158 (ACO) and 0.8161 (QP), competitive with the SVM base model range and within the upper bound of ensemble methods reported in the literature. Both weighting strategies reach an identical expected cost of 103 on the 200-sample test set.
-
+\item Recall = 0.92: Of the 60 true defaulters in the test set, 55 are correctly flagged
+and rejected. Only 5 are missed (FN = 5). This is the primary optimisation target:
+given the 5:1 cost ratio, each avoided False Negative saves 4 net units relative to
+the cost of the additional False Positives it induces.
 \subsection{ACO-QP Parity}
 
 ACO-R and QP produce \textbf{identical deployment outcomes}: same expected cost (103), same classification report, and negligibly different ROC-AUC values. This validates ACO-R as the preferred solver for future extensions where the objective function is non-smooth.
@@ -812,6 +833,7 @@ Both solvers assign the MLP a substantial positive weight ($\approx 0.40$), RF t
 
 The ensemble (ROC-AUC 0.8158--0.8161) sits above the OOF estimates of the individual models (0.7757--0.7781), demonstrating that calibrated combination provides a meaningful lift~\citep{dietterich2000ensemble}.
 
+\pagebreak
 % ===============================================================
 % 9. DRAWBACKS
 % ===============================================================
@@ -819,24 +841,23 @@ The ensemble (ROC-AUC 0.8158--0.8161) sits above the OOF estimates of the indivi
 
 \subsection{Computational Cost}
 
-The nested cross-validation with HPO requires approximately 828 pipeline fits across three models. Runtime on standard cloud hardware is approximately 15--45 minutes.
-
+The nested cross-validation with HPO requires approximately 828 pipeline fits across three models. While this is modest by modern standards, where large-scale hyperparameter searches often involve thousands or even tens of thousands of evaluations, it nevertheless incurs a noticeable runtime due to repeated training cycles. In this context, scaling to larger search spaces becomes less a methodological constraint and more a question of available computational resources and financial budget.
 \subsection{Small Test Set}
 
 The 200-sample test set contains approximately 60 true positives. Confidence intervals on AUC at this sample size are approximately $\pm$0.04, meaning comparisons between methods are not statistically significant.
 
 \subsection{Objective Misalignment}
 
-The weight optimisers (QP and ACO) minimise MSE, while the deployment objective is asymmetric cost minimisation. Replacing the MSE objective with a direct cost function would render QP inapplicable, making ACO the only valid solver.
+The weight optimisers (QP and ACO) minimise MSE, while the deployment objective is asymmetric cost minimisation. Replacing the MSE objective with a direct cost function removes the quadratic structure (quadratic structure means that the objective function can be written as a quadratic expression in the decision variables) which is required by quadratic programming, making it unsuitable for solving the problem and leaving ACO as the only viable alternative.
 
 \subsection{MLP Inductive Bias}
 
-The ReLU MLP is structurally mismatched to this dataset: after one-hot encoding, the majority of features are binary, and ReLU provides no non-linear transformation on binary inputs.
-
+The ReLU MLP is structurally mismatched to this dataset: after one-hot encoding, the majority of features are binary, and ReLU (a piecewise linear function that outputs zero for negative values and the input itself for positives, cannot produce rich non-linear transformations from such binary inputs) provides no non-linear transformation on binary inputs.
 \subsection{SMOTENC Synthetic Distribution}
 
 Synthetic samples still introduce non-natural training distributions. The MLP's early-stopping validation set consists of SMOTENC-augmented samples, creating a minor distributional mismatch with the natural test partition.
 
+\pagebreak
 % ===============================================================
 % 10. CONCLUSION
 % ===============================================================
@@ -892,7 +913,7 @@ RST also provides a natural mechanism for \textbf{attribute reduction}: the \tex
 A particularly powerful extension of both the ANFIS and RST components is their integration into a \textbf{Rough-Fuzzy Inference System} (RFIS). This hybrid paradigm addresses two complementary forms of uncertainty:
 
 \begin{itemize}
-    \item \textbf{Fuzziness (Vagueness)}: The inherent gradedness of linguistic categories. The boundary between ``Low Risk'' and ``Medium Risk'' is not crisp; a probability of 0.25 is ``more Low Risk'' and ``less Medium Risk'' by degree. Fuzzy membership functions, as used in ANFIS, model this gradedness.
+    \item \textbf{Fuzziness (Vagueness)}: The inherent gradedness (gradedness means that category membership is continuous rather than binary—labels or concepts (like "Low Risk") admit degrees) of linguistic categories. The boundary between ``Low Risk'' and ``Medium Risk'' is not crisp; a probability of 0.25 is ``more Low Risk'' and ``less Medium Risk'' by degree. Fuzzy membership functions, as used in ANFIS, model this gradedness.
     \item \textbf{Roughness (Incompleteness)}: The inability to classify an object due to insufficient attribute information. This is not a matter of degree but of epistemics — the available data simply does not permit a definitive assignment. RST captures this through the boundary region.
 \end{itemize}
 
