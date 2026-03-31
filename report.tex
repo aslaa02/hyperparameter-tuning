@@ -88,7 +88,7 @@ Credit risk assessment is the process by which a financial institution evaluates
 
 \subsection{Motivation}
 
-The German Credit dataset~\citep{dua2019uci}, a widely studied benchmark with 1,000 samples and 20 features, embodies the practical challenges of credit scoring: class imbalance (70\% creditworthy, 30\% defaulters), mixed feature types (7 continuous, 13 categorical), and an explicit asymmetric cost matrix. Traditional binary classifiers applied to this data without accommodating these properties produce models that are systematically biased toward the majority class and are evaluated using metrics that do not reflect the financial stakes.
+The German Credit dataset~\citep{hofmann1994statlog}, a widely studied benchmark with 1,000 samples and 20 features, embodies the practical challenges of credit scoring: class imbalance (70\% creditworthy, 30\% defaulters), mixed feature types (7 continuous, 13 categorical), and an explicit asymmetric cost matrix. Traditional binary classifiers applied to this data without accommodating these properties produce models that are systematically biased toward the majority class and are evaluated using metrics that do not reflect the financial stakes.
 
 \subsection{Objectives}
 
@@ -196,7 +196,7 @@ Vanilla SMOTE is routinely applied to datasets after one-hot encoding in the lit
 
 \subsubsection{Overview}
 
-The Statlog (German Credit) dataset~\citep{dua2019uci} was originally compiled by Professor Hans Hofmann at the University of Hamburg and made publicly available through the UCI Machine Learning Repository. It contains records of 1,000 loan applications processed by a German bank, each labelled as either \textit{good credit} (creditworthy) or \textit{bad credit} (default-risk). The dataset is widely regarded as a standard benchmark for cost-sensitive binary classification, owing to its realistic class imbalance, mixed feature types, and explicit asymmetric misclassification costs.
+The Statlog (German Credit) dataset~\citep{hofmann1994statlog} was originally compiled by Professor Hans Hofmann at the University of Hamburg and made publicly available through the UCI Machine Learning Repository. It contains records of 1,000 loan applications processed by a German bank, each labelled as either \textit{good credit} (creditworthy) or \textit{bad credit} (default-risk). The dataset is widely regarded as a standard benchmark for cost-sensitive binary classification, owing to its realistic class imbalance, mixed feature types, and explicit asymmetric misclassification costs.
 
 \begin{table}[H]
 \centering
@@ -968,10 +968,15 @@ Dorigo, M. (1992).
 \newblock \textit{Optimization, Learning and Natural Algorithms}.
 \newblock PhD thesis, Politecnico di Milano.
 
-\bibitem[Dua and Graff(2019)]{dua2019uci}
-Dua, D. and Graff, C. (2019).
-\newblock {UCI} Machine Learning Repository.
-\newblock \url{http://archive.ics.uci.edu/ml}.
+% \bibitem[Dua and Graff(2019)]{dua2019uci}
+% Dua, D. and Graff, C. (2019).
+% \newblock {UCI} Machine Learning Repository.
+% \newblock \url{http://archive.ics.uci.edu/ml}.
+
+\bibitem[Hofmann(1994)]{hofmann1994statlog}
+Hofmann, Hans. \textit{Statlog (German Credit Data)}
+\newblock UCI Machine Learning Repository, 1994
+\newblock DOI: \url{https://doi.org/10.24432/C5NC77}
 
 \bibitem[Elkan(2001)]{elkan2001foundations}
 Elkan, C. (2001).
